@@ -93,7 +93,7 @@ This project aims to:
 
 ## 📸 Dashboard Preview
 
-*(Add a screenshot here after running your app)*
+![image alt](https://github.com/Samrile/Macro-Finances-impact-on-stock-prices/blob/9ad3be6631763c3c47b3ae2c854e7221a0f02238/Screenshot%202026-04-20%20192316.png)
 
 ---
 
