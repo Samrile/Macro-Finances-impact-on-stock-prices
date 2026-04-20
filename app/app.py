@@ -4,34 +4,24 @@ import plotly.express as px
 from pathlib import Path
 
 # ─────────────────────────────────────────────
-# PAGE CONFIG
+# CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Omega Dashboard", layout="wide")
 
-# ─────────────────────────────────────────────
-# PATH SETUP
-# ─────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR / "data" / "processed" / "final_dataset.csv"
 
 # ─────────────────────────────────────────────
-# DEBUG CHECK (VERY IMPORTANT)
-# ─────────────────────────────────────────────
-st.write("📂 Looking for dataset at:", DATA_PATH)
-
-if not DATA_PATH.exists():
-    st.error("❌ Dataset not found! Make sure final_dataset.csv is uploaded to GitHub.")
-    st.stop()
-
-# ─────────────────────────────────────────────
 # LOAD DATA
 # ─────────────────────────────────────────────
-df = pd.read_csv(DATA_PATH)
+if not DATA_PATH.exists():
+    st.error("Dataset not found!")
+    st.stop()
 
+df = pd.read_csv(DATA_PATH)
 df["date"] = pd.to_datetime(df["date"])
 df = df.sort_values("date")
 
-# Create stock return
 df["stock_return"] = df["close"].pct_change()
 df = df.dropna()
 
@@ -39,79 +29,105 @@ df = df.dropna()
 # TITLE
 # ─────────────────────────────────────────────
 st.title("📊 Omega: Stock vs Macroeconomic Analysis")
-st.markdown("Analyzing AAPL stock performance against macro indicators")
+st.markdown("Interactive dashboard for analyzing macro-financial relationships")
 
 # ─────────────────────────────────────────────
-# SIDEBAR FILTERS
+# SIDEBAR
 # ─────────────────────────────────────────────
-st.sidebar.header("Filters")
+st.sidebar.header("Controls")
 
 start_date = st.sidebar.date_input("Start Date", df["date"].min())
 end_date = st.sidebar.date_input("End Date", df["date"].max())
 
-df = df[(df["date"] >= pd.to_datetime(start_date)) &
-        (df["date"] <= pd.to_datetime(end_date))]
-
 indicator = st.sidebar.selectbox(
-    "Select Macro Indicator",
+    "Select Indicator",
     ["interest_rate", "inflation", "unemployment", "gdp"]
 )
 
+lag = st.sidebar.slider("Lag (months)", 0, 6, 0)
+
+rolling_window = st.sidebar.slider("Rolling Window", 3, 24, 6)
+
+# Filter
+df = df[(df["date"] >= pd.to_datetime(start_date)) &
+        (df["date"] <= pd.to_datetime(end_date))]
+
+# Apply lag
+df[f"{indicator}_lag"] = df[indicator].shift(lag)
+
 # ─────────────────────────────────────────────
-# KPI METRICS
+# KPI
 # ─────────────────────────────────────────────
 col1, col2, col3 = st.columns(3)
 
-col1.metric("Avg Stock Price", round(df["close"].mean(), 2))
-col2.metric("Avg Volatility", round(df["volatility"].mean(), 4))
-col3.metric("Avg Volume", int(df["volume"].mean()))
+col1.metric("Avg Price", round(df["close"].mean(), 2))
+col2.metric("Volatility", round(df["volatility"].mean(), 4))
+col3.metric("Volume", int(df["volume"].mean()))
 
 # ─────────────────────────────────────────────
-# STOCK PRICE CHART
+# STOCK PRICE
 # ─────────────────────────────────────────────
-st.subheader("📈 Stock Price Over Time")
+st.subheader("📈 Stock Price")
 
-fig1 = px.line(df, x="date", y="close", title="AAPL Stock Price")
+fig1 = px.line(df, x="date", y="close")
 st.plotly_chart(fig1, use_container_width=True)
 
 # ─────────────────────────────────────────────
-# STOCK RETURN VS MACRO
+# LAG ANALYSIS PLOT
 # ─────────────────────────────────────────────
-st.subheader(f"📊 Stock Return vs {indicator}")
+st.subheader(f"📊 Stock Return vs {indicator} (Lag = {lag})")
 
 fig2 = px.line(
     df,
     x="date",
-    y=["stock_return", indicator],
-    title=f"Stock Return vs {indicator}"
+    y=["stock_return", f"{indicator}_lag"]
 )
 
 st.plotly_chart(fig2, use_container_width=True)
 
 # ─────────────────────────────────────────────
-# CORRELATION HEATMAP
+# ROLLING CORRELATION
 # ─────────────────────────────────────────────
-st.subheader("🔥 Correlation Heatmap")
+st.subheader("📉 Rolling Correlation")
 
-corr = df[["stock_return", "interest_rate", "inflation", "unemployment", "gdp"]].corr()
+rolling_corr = df["stock_return"].rolling(rolling_window).corr(df[f"{indicator}_lag"])
 
-fig3 = px.imshow(
-    corr,
-    text_auto=True,
-    color_continuous_scale="RdBu_r",
-    title="Correlation Matrix"
+fig3 = px.line(
+    x=df["date"],
+    y=rolling_corr,
+    labels={"x": "Date", "y": "Correlation"}
 )
 
 st.plotly_chart(fig3, use_container_width=True)
 
 # ─────────────────────────────────────────────
-# INSIGHTS SECTION
+# HEATMAP
 # ─────────────────────────────────────────────
-st.subheader("🧠 Key Insights")
+st.subheader("🔥 Correlation Heatmap")
 
-st.markdown("""
-- 📌 Strong relationship between trading volume and volatility  
-- 📌 Interest rates show weak inverse relation with stock returns  
-- 📌 Inflation impact is moderate and lag-dependent  
-- 📌 GDP correlation is trend-driven, not immediate causation  
+corr = df[["stock_return", "interest_rate", "inflation", "unemployment", "gdp"]].corr()
+
+fig4 = px.imshow(corr, text_auto=True, color_continuous_scale="RdBu_r")
+st.plotly_chart(fig4, use_container_width=True)
+
+# ─────────────────────────────────────────────
+# AUTO INSIGHTS
+# ─────────────────────────────────────────────
+st.subheader("🧠 Auto Insights")
+
+current_corr = df["stock_return"].corr(df[f"{indicator}_lag"])
+
+if current_corr > 0.3:
+    insight = "Positive relationship detected"
+elif current_corr < -0.3:
+    insight = "Negative relationship detected"
+else:
+    insight = "Weak or no clear relationship"
+
+st.markdown(f"""
+- Selected Indicator: **{indicator}**
+- Lag Applied: **{lag} months**
+- Correlation: **{round(current_corr, 3)}**
+
+👉 Insight: **{insight}**
 """)
